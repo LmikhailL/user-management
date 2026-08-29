@@ -1,0 +1,9 @@
+# Local development profile: plaintext values, no env vars.
+# Requires PostgreSQL reachable at localhost:5432 (database "user_management") — start it via
+# Docker before running the app with this profile active. See LocalProfileStartupWarning for
+# the matching startup-time reminder.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/user_management
+    username: postgres
+    password: postgres
