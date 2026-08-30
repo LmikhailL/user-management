@@ -41,7 +41,11 @@ if [ -z "$CURRENT_BRANCH" ] || [ "$CURRENT_BRANCH" = "$BASE_BRANCH" ]; then
   exit 0
 fi
 
-git fetch origin "$BASE_BRANCH" --quiet
+# Plain `git fetch origin` fails against this private repo (no credential helper configured for
+# fetch, only push had the PAT embedded) — fetch through the same PAT-embedded URL and update the
+# origin/<base> tracking ref explicitly via refspec, same as it would from a normal `origin` fetch.
+git fetch "https://${GITHUB_PAT}@github.com/${REPO_SLUG}.git" \
+  "+refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}" --quiet
 
 AHEAD_COUNT="$(git rev-list "origin/${BASE_BRANCH}..HEAD" --count)"
 if [ "$AHEAD_COUNT" -eq 0 ]; then
