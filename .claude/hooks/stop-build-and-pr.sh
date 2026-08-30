@@ -2,10 +2,11 @@
 # Stop hook: runs AFTER a commit has already been made via the story-commit skill, which commits
 # on a branch named for the story's ticket (e.g. `US-001`), never on `main`. Verifies the build
 # (spotless:apply + mvn clean install), pushes that same ticket branch, opens a PR into `main` the
-# first time (later runs just push the branch update rather than opening a duplicate PR), then
-# runs an automated code review of the PR's whole diff via a headless `claude -p` call (no tool
-# access) and posts it as a PR comment. Never creates its own commit or its own throwaway branch;
-# both are the story-commit skill's job. No-ops if there's nothing new to ship, if the current
+# first time with a compact, headless-Claude-generated description (later pushes to the same PR
+# keep that description as-is), then runs an automated code review of the PR's whole diff via a
+# separate headless `claude -p` call (no tool access) and posts it as a PR comment. Never creates
+# its own commit or its own throwaway branch; both are the story-commit skill's job.
+# No-ops if there's nothing new to ship, if the current
 # branch is the base branch itself, if the working tree has uncommitted changes, or if GITHUB_PAT
 # is unavailable.
 set -euo pipefail
@@ -79,7 +80,39 @@ else
   # follow-up commits over time (fixes, tooling), and the latest one drifts away from what the PR
   # is actually about. The first commit is normally the story-commit skill's own feature commit.
   PR_TITLE="$(git log "origin/${BASE_BRANCH}..HEAD" --reverse --pretty=%s | head -1)"
-  PR_BODY="$(git log "origin/${BASE_BRANCH}..HEAD" --pretty=format:'- %s')"
+
+  # Compact description, generated once at PR-creation time only (not regenerated on later
+  # pushes to the same PR): commit subjects + a diff --stat summary is enough context for a
+  # skimmable body without paying for the full diff the way the review step does.
+  PR_COMMITS="$(git log "origin/${BASE_BRANCH}..HEAD" --reverse --pretty=format:'- %s')"
+  PR_DIFFSTAT="$(git diff --stat "origin/${BASE_BRANCH}...HEAD" | tail -1)"
+  # Quoted heredoc ('EOF', not EOF) for the static instructions: no $()/backtick expansion inside
+  # it. The dynamic parts (commit subjects, diff stat) are concatenated in afterward via printf
+  # rather than interpolated inside the heredoc — commit messages and diff content can contain
+  # arbitrary shell metacharacters, and an unquoted heredoc would try to expand them.
+  # IMPORTANT: keep this heredoc's own text free of apostrophes/contractions ("do not", not
+  # "don't") — bash's $(...) scanner does a naive quote-balance pass that gets confused by a lone
+  # single quote inside a heredoc body even with a quoted delimiter, breaking the whole script.
+  PR_BODY_PROMPT_STATIC="$(cat <<'EOF'
+Write a compact GitHub pull request description in GitHub-flavored markdown for the PR whose
+commits are listed below. Structure: a "## Summary" section with 1-2 sentences on what the PR
+does and why, then a "## Changes" section as a short bulleted list of the key changes (group
+related commits together, do not just restate every commit message verbatim). Only add a
+"## Testing" section if the commits clearly indicate tests were added — one line, not a list.
+Keep the whole thing compact and skimmable: well under 150 words total, no filler, no restating
+the diff stat. Do not use any tools. Respond with the markdown only, nothing else.
+
+Commits (oldest first):
+EOF
+)"
+  PR_BODY_PROMPT="$(printf '%s\n%s\n\nDiff stat: %s' "$PR_BODY_PROMPT_STATIC" "$PR_COMMITS" "$PR_DIFFSTAT")"
+  PR_BODY="$(printf '%s' "$PR_BODY_PROMPT" | claude -p --model sonnet --tools "" --output-format text || true)"
+  if [ -z "$PR_BODY" ]; then
+    # Headless review call failed or returned nothing — fall back to the plain commit list
+    # rather than opening a PR with an empty body.
+    PR_BODY="$PR_COMMITS"
+  fi
+
   JSON_PAYLOAD="$(jq -n --arg title "$PR_TITLE" --arg head "$CURRENT_BRANCH" --arg base "$BASE_BRANCH" --arg body "$PR_BODY" \
     '{title: $title, head: $head, base: $base, body: $body}')"
 
@@ -101,7 +134,12 @@ fi
 # editing a previous one.
 REVIEW_DIFF="$(git diff "origin/${BASE_BRANCH}...HEAD")"
 if [ -n "$REVIEW_DIFF" ]; then
-  REVIEW_PROMPT="$(cat <<EOF
+  # Same reasoning as PR_BODY_PROMPT above, doubly so here: this is arbitrary diff content, not
+  # just commit subjects — guaranteed to contain shell metacharacters ($, backticks, quotes) that
+  # an unquoted heredoc would try to expand. Quoted heredoc for the static instructions, diff
+  # concatenated in afterward as an inert value. Keep this heredoc's own text apostrophe-free too
+  # (see the PR_BODY_PROMPT_STATIC comment above for why).
+  REVIEW_PROMPT_STATIC="$(cat <<'EOF'
 You are reviewing a git diff for a pull request. Report only real, concrete correctness bugs
 and clear simplification/efficiency issues you are confident about — do not pad the review with
 style nitpicks or speculative concerns. For each finding, name the file and describe the concrete
@@ -111,10 +149,9 @@ suitable for a PR comment. Do not use any tools — just read the diff below and
 review text only, nothing else.
 
 --- DIFF ---
-${REVIEW_DIFF}
---- END DIFF ---
 EOF
 )"
+  REVIEW_PROMPT="$(printf '%s\n%s\n--- END DIFF ---' "$REVIEW_PROMPT_STATIC" "$REVIEW_DIFF")"
 
   REVIEW_TEXT="$(printf '%s' "$REVIEW_PROMPT" | claude -p --model sonnet --tools "" --output-format text || true)"
 
