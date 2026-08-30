@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Stop hook: runs AFTER a commit has already been made via the story-commit skill, which commits
 # on a branch named for the story's ticket (e.g. `US-001`), never on `main`. Verifies the build
-# (spotlessApply + mvn clean install), pushes that same ticket branch, and opens a PR into `main`
-# the first time — later runs just push the branch update rather than opening a duplicate PR.
-# Never creates its own commit or its own throwaway branch; both are the story-commit skill's
-# job. No-ops if there's nothing new to ship, if the current branch is the base branch itself, if
-# the working tree has uncommitted changes, or if GITHUB_PAT is unavailable.
+# (spotless:apply + mvn clean install), pushes that same ticket branch, opens a PR into `main` the
+# first time (later runs just push the branch update rather than opening a duplicate PR), then
+# runs an automated code review of the PR's whole diff via a headless `claude -p` call (no tool
+# access) and posts it as a PR comment. Never creates its own commit or its own throwaway branch;
+# both are the story-commit skill's job. No-ops if there's nothing new to ship, if the current
+# branch is the base branch itself, if the working tree has uncommitted changes, or if GITHUB_PAT
+# is unavailable.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -63,29 +65,68 @@ fi
 
 git push "https://${GITHUB_PAT}@github.com/${REPO_SLUG}.git" "${CURRENT_BRANCH}:${CURRENT_BRANCH}"
 
-EXISTING_PR_URL="$(curl -sf \
+EXISTING_PR_JSON="$(curl -sf \
   -H "Authorization: Bearer ${GITHUB_PAT}" \
   -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${REPO_SLUG}/pulls?head=${REPO_OWNER}:${CURRENT_BRANCH}&state=open" \
-  | jq -r '.[0].html_url // empty')"
+  "https://api.github.com/repos/${REPO_SLUG}/pulls?head=${REPO_OWNER}:${CURRENT_BRANCH}&state=open")"
+PR_NUMBER="$(echo "$EXISTING_PR_JSON" | jq -r '.[0].number // empty')"
+EXISTING_PR_URL="$(echo "$EXISTING_PR_JSON" | jq -r '.[0].html_url // empty')"
 
 if [ -n "$EXISTING_PR_URL" ]; then
   echo "stop-build-and-pr: pushed ${CURRENT_BRANCH}; existing PR already open at ${EXISTING_PR_URL}."
-  exit 0
+else
+  # The *first* commit unique to this branch (not the latest) — a ticket branch accumulates
+  # follow-up commits over time (fixes, tooling), and the latest one drifts away from what the PR
+  # is actually about. The first commit is normally the story-commit skill's own feature commit.
+  PR_TITLE="$(git log "origin/${BASE_BRANCH}..HEAD" --reverse --pretty=%s | head -1)"
+  PR_BODY="$(git log "origin/${BASE_BRANCH}..HEAD" --pretty=format:'- %s')"
+  JSON_PAYLOAD="$(jq -n --arg title "$PR_TITLE" --arg head "$CURRENT_BRANCH" --arg base "$BASE_BRANCH" --arg body "$PR_BODY" \
+    '{title: $title, head: $head, base: $base, body: $body}')"
+
+  PR_RESPONSE="$(curl -sf -X POST \
+    -H "Authorization: Bearer ${GITHUB_PAT}" \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPO_SLUG}/pulls" \
+    -d "$JSON_PAYLOAD")"
+  PR_NUMBER="$(echo "$PR_RESPONSE" | jq -r '.number')"
+
+  echo "stop-build-and-pr: opened PR from ${CURRENT_BRANCH} into ${BASE_BRANCH} (\"${PR_TITLE}\")."
 fi
 
-# The *first* commit unique to this branch (not the latest) — a ticket branch accumulates
-# follow-up commits over time (fixes, tooling), and the latest one drifts away from what the PR
-# is actually about. The first commit is normally the story-commit skill's own feature commit.
-PR_TITLE="$(git log "origin/${BASE_BRANCH}..HEAD" --reverse --pretty=%s | head -1)"
-PR_BODY="$(git log "origin/${BASE_BRANCH}..HEAD" --pretty=format:'- %s')"
-JSON_PAYLOAD="$(jq -n --arg title "$PR_TITLE" --arg head "$CURRENT_BRANCH" --arg base "$BASE_BRANCH" --arg body "$PR_BODY" \
-  '{title: $title, head: $head, base: $base, body: $body}')"
+# Automated code review: feed the PR's whole diff (three-dot, same as GitHub's own PR diff view)
+# directly into a headless Claude Code invocation as plain text — --tools "" disables all tool
+# access, so there is nothing for it to request permission for, and no risk of it acting on the
+# repo. Runs on every push that reaches this point (not just when the PR is first opened), so the
+# review reflects whatever is on the branch right now; each run posts a new comment rather than
+# editing a previous one.
+REVIEW_DIFF="$(git diff "origin/${BASE_BRANCH}...HEAD")"
+if [ -n "$REVIEW_DIFF" ]; then
+  REVIEW_PROMPT="$(cat <<EOF
+You are reviewing a git diff for a pull request. Report only real, concrete correctness bugs
+and clear simplification/efficiency issues you are confident about — do not pad the review with
+style nitpicks or speculative concerns. For each finding, name the file and describe the concrete
+problem and its consequence in 1-2 sentences. If you find nothing worth flagging, say so plainly
+in one sentence. Keep the whole review under 400 words, formatted as GitHub-flavored markdown
+suitable for a PR comment. Do not use any tools — just read the diff below and respond with the
+review text only, nothing else.
 
-curl -sf -X POST \
-  -H "Authorization: Bearer ${GITHUB_PAT}" \
-  -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${REPO_SLUG}/pulls" \
-  -d "$JSON_PAYLOAD" > /dev/null
+--- DIFF ---
+${REVIEW_DIFF}
+--- END DIFF ---
+EOF
+)"
 
-echo "stop-build-and-pr: opened PR from ${CURRENT_BRANCH} into ${BASE_BRANCH} (\"${PR_TITLE}\")."
+  REVIEW_TEXT="$(printf '%s' "$REVIEW_PROMPT" | claude -p --model sonnet --tools "" --output-format text || true)"
+
+  if [ -n "$REVIEW_TEXT" ]; then
+    COMMENT_PAYLOAD="$(jq -n --arg body "$REVIEW_TEXT" '{body: ("### 🤖 Automated code review\n\n" + $body)}')"
+    curl -sf -X POST \
+      -H "Authorization: Bearer ${GITHUB_PAT}" \
+      -H "Accept: application/vnd.github+json" \
+      "https://api.github.com/repos/${REPO_SLUG}/issues/${PR_NUMBER}/comments" \
+      -d "$COMMENT_PAYLOAD" > /dev/null
+    echo "stop-build-and-pr: posted an automated code review comment on PR #${PR_NUMBER}."
+  else
+    echo "stop-build-and-pr: code review produced no output, skipping comment." >&2
+  fi
+fi
