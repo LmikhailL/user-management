@@ -62,6 +62,12 @@ in-scope component, use `mcp__idea__search_symbol` to check whether it already e
 - Plan says "New" but it already exists → treat it like Modify — something built it since the
   plan was written, so verify it matches rather than assuming the plan is stale in your favor.
 
+"Matches the plan" is about the plan's *shape* (what class, what responsibility) — it is not a
+free pass on coding conventions. A component that matches the plan but was built before an
+`AGENTS.md` convention existed or tightened (e.g. constructor style) still needs refactoring to
+comply; skipping it as "already done" would silently leave the codebase non-conformant on a rerun
+whose whole purpose is to bring it into compliance.
+
 This is what keeps repeated runs of this skill safe rather than destructive.
 
 ## Step 4 — Surface every open decision before writing logic
@@ -112,6 +118,11 @@ For each component:
   report, since `user-story-rest-api`'s shared exception handler would need a new case for it.
 - **Command/result records** are the use case's public input/output shape — plain records, no
   Lombok, matching what Step 4's answers (and the spec) actually require.
+- **Constructors** for use-case classes, facades, and any other component whose only fields are
+  `private final` injected dependencies: never hand-write the constructor — annotate the class
+  `@RequiredArgsConstructor` (Lombok) instead, per `AGENTS.md`'s "Lombok is allowed for
+  constructors" rule. Hand-write a constructor only when it does something a generated
+  all-args constructor cannot (validation, a derived field, a non-dependency parameter).
 
 Write new files with `mcp__idea__create_new_file`; modify existing ones with
 `mcp__idea__apply_patch` so the change is a clean diff against what Step 3 found, not a full

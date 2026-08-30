@@ -2,21 +2,19 @@ package org.mike.usermanagement.ratelimit.domain;
 
 import java.time.Duration;
 import java.time.Instant;
+import lombok.RequiredArgsConstructor;
 import org.mike.usermanagement.ratelimit.persistence.RegistrationAttempt;
 import org.mike.usermanagement.ratelimit.persistence.RegistrationAttemptRepository;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class RegistrationRateLimiterUseCase {
 
     private static final int MAX_ATTEMPTS_PER_WINDOW = 5;
     private static final Duration WINDOW = Duration.ofMinutes(1);
 
     private final RegistrationAttemptRepository registrationAttemptRepository;
-
-    public RegistrationRateLimiterUseCase(RegistrationAttemptRepository registrationAttemptRepository) {
-        this.registrationAttemptRepository = registrationAttemptRepository;
-    }
 
     public void checkAndRecordAttempt(String ipAddress) {
         Instant now = Instant.now();

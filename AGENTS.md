@@ -12,6 +12,8 @@ Build-time tooling only, not runtime/test dependencies:
 
 Lombok is allowed **only** for getters, setters and constructors. Everything else that would need boilerplate must be a `record`.
 
+Use Java 25 LTS language features where they simplify code, rather than pre-25 idioms out of habit — e.g. `public` is redundant on `main` under Java 25's relaxed launch protocol; the same applies to pattern matching, records, sealed types, virtual threads, etc. wherever they fit.
+
 ## Layers
 
 `web → domain → persistence`. Dependencies point one way only.

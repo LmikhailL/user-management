@@ -3,6 +3,7 @@ package org.mike.usermanagement.user.domain;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 import org.mike.usermanagement.user.persistence.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,6 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class RegisterUserUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(RegisterUserUseCase.class);
@@ -24,11 +26,6 @@ public class RegisterUserUseCase {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-
-    public RegisterUserUseCase(UserRepository userRepository, PasswordEncoder passwordEncoder) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-    }
 
     public RegisteredUser register(RegisterUserCommand command) {
         String email = validateAndNormalizeEmail(command.email());
