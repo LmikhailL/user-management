@@ -4,7 +4,7 @@ Rules below are mandatory. Do not introduce libraries, layers, or patterns not l
 
 ## Stack (strict — nothing else)
 
-Java 25 · Spring Boot 4.1.1 · Spring Web · Hibernate/JPA · PostgreSQL · Liquibase · MapStruct · Lombok · JUnit · Mockito · AssertJ · TestContainers · ArchUnit · Spotless · Actuator
+Java 25 · Spring Boot 4.1.1 · Spring Web · Spring Security · Hibernate/JPA · PostgreSQL · Liquibase · MapStruct · Lombok · JUnit · Mockito · AssertJ · TestContainers · ArchUnit · Spotless · Actuator
 
 Build-time tooling only, not runtime/test dependencies:
 - **OpenAPI Generator** (Maven plugin, `interfaceOnly: true`) — generates the REST controller interface and model DTOs from each use case's OpenAPI spec under `src/main/resources/openapi/`; the interface is never hand-written.
@@ -96,3 +96,4 @@ A feature is implemented **if and only if** the code *and* all of its tests exis
 - SLF4J logging: `info` for business events, `debug` for diagnostics. Never log secrets or PII.
 - Actuator enabled, health endpoint exposed.
 - Spotless: run `spotlessApply` before every commit; the build fails on formatting violations.
+

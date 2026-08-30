@@ -1,0 +1,78 @@
+openapi: 3.0.3
+info:
+  title: Register User API
+  version: "1.0"
+paths:
+  /api/users:
+    post:
+      operationId: registerUser
+      summary: Register a new user
+      tags:
+        - RegisterUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterUserRequest"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisteredUserResponse"
+        "400":
+          description: Invalid input or password confirmation mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many registration attempts from this IP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    RegisterUserRequest:
+      type: object
+      required:
+        - email
+        - password
+        - passwordConfirmation
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        passwordConfirmation:
+          type: string
+    RegisteredUserResponse:
+      type: object
+      required:
+        - id
+        - email
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+        - message
+        - category
+      properties:
+        message:
+          type: string
+        category:
+          type: string
