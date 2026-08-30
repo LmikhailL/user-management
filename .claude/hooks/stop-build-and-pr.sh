@@ -74,7 +74,10 @@ if [ -n "$EXISTING_PR_URL" ]; then
   exit 0
 fi
 
-PR_TITLE="$(git log -1 --pretty=%s)"
+# The *first* commit unique to this branch (not the latest) — a ticket branch accumulates
+# follow-up commits over time (fixes, tooling), and the latest one drifts away from what the PR
+# is actually about. The first commit is normally the story-commit skill's own feature commit.
+PR_TITLE="$(git log "origin/${BASE_BRANCH}..HEAD" --reverse --pretty=%s | head -1)"
 PR_BODY="$(git log "origin/${BASE_BRANCH}..HEAD" --pretty=format:'- %s')"
 JSON_PAYLOAD="$(jq -n --arg title "$PR_TITLE" --arg head "$CURRENT_BRANCH" --arg base "$BASE_BRANCH" --arg body "$PR_BODY" \
   '{title: $title, head: $head, base: $base, body: $body}')"
