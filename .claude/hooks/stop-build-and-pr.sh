@@ -52,9 +52,9 @@ if [ "$AHEAD_COUNT" -eq 0 ]; then
   exit 0
 fi
 
-./mvnw spotlessApply
+./mvnw spotless:apply
 if [ -n "$(git status --porcelain)" ]; then
-  echo "stop-build-and-pr: spotlessApply found formatting that wasn't committed clean — fix it and re-commit via story-commit before this can open a PR." >&2
+  echo "stop-build-and-pr: spotless:apply found formatting that wasn't committed clean — fix it and re-commit via story-commit before this can open a PR." >&2
   git checkout -- .
   exit 1
 fi
