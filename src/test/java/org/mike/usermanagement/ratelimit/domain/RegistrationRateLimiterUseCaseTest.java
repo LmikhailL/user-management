@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.mike.usermanagement.ratelimit.persistence.RegistrationAttempt;
 import org.mike.usermanagement.ratelimit.persistence.RegistrationAttemptRepository;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 
 class RegistrationRateLimiterUseCaseTest {
 
@@ -101,6 +103,30 @@ class RegistrationRateLimiterUseCaseTest {
             // Then
             verify(repository).save(eq(existing));
             assertThat(existing.getAttemptCount()).isEqualTo(6);
+        }
+    }
+
+    @Nested
+    class ConcurrentFirstAttempt {
+
+        @Test
+        @DisplayName(
+                "given two first-time requests from the same IP race on insert, when the loser hits the unique constraint, then it retries against the winner's row instead of failing")
+        void retriesAfterLosingInsertRace() {
+            // Given
+            RegistrationAttempt winnerRow = new RegistrationAttempt(UUID.randomUUID(), IP, Instant.now(), 1);
+            when(repository.findByIpAddress(IP)).thenReturn(Optional.empty(), Optional.of(winnerRow));
+            when(repository.save(any(RegistrationAttempt.class)))
+                    .thenThrow(new DataIntegrityViolationException("duplicate key"))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
+
+            // When
+            useCase.checkAndRecordAttempt(IP);
+
+            // Then
+            verify(repository, times(2)).findByIpAddress(IP);
+            verify(repository, times(2)).save(any(RegistrationAttempt.class));
+            assertThat(winnerRow.getAttemptCount()).isEqualTo(2);
         }
     }
 

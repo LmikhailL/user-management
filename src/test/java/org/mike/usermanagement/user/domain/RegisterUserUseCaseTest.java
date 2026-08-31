@@ -230,7 +230,23 @@ class RegisterUserUseCaseTest {
             // When / Then
             assertThatThrownBy(() -> useCase.register(command))
                     .isInstanceOf(InvalidRegistrationException.class)
-                    .hasMessage("Password must be at most 72 characters");
+                    .hasMessage("Password must be at most 72 bytes");
+        }
+
+        @Test
+        @DisplayName(
+                "given a password within bcrypt's 72-character count but over 72 UTF-8 bytes due to multi-byte characters, when registering, then it fails rather than silently truncating")
+        void rejectsPasswordOverlongInBytesButNotChars() {
+            // Given: 62 UTF-16 chars (under the old, buggy character-count limit), but each 'é'
+            // encodes to 2 UTF-8 bytes, so the true encoded length is 122 bytes — over the limit.
+            String password = "é".repeat(60) + "A1";
+            assertThat(password.length()).isLessThanOrEqualTo(72);
+            RegisterUserCommand command = new RegisterUserCommand("ada@example.com", password, password);
+
+            // When / Then
+            assertThatThrownBy(() -> useCase.register(command))
+                    .isInstanceOf(InvalidRegistrationException.class)
+                    .hasMessage("Password must be at most 72 bytes");
         }
     }
 

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Stop hook: runs AFTER a commit has already been made via the story-commit skill, which commits
-# on a branch named for the story's ticket (e.g. `US-001`), never on `main`. Verifies the build
-# (spotless:apply + mvn clean install), pushes that same ticket branch, opens a PR into `main` the
-# first time with a compact, headless-Claude-generated description (later pushes to the same PR
-# keep that description as-is), then runs an automated code review of the PR's whole diff via a
-# separate headless `claude -p` call (no tool access) and posts it as a PR comment. Never creates
-# its own commit or its own throwaway branch; both are the story-commit skill's job.
+# PostToolUse hook (matcher: Bash, if: "Bash(git commit *)"): runs immediately after a `git
+# commit` on a branch named for the story's ticket (e.g. `US-001`), never on `main`. Verifies the
+# build (spotless:apply + mvn clean install), pushes that same ticket branch, opens a PR into
+# `main` the first time with a compact, headless-Claude-generated description (later pushes to the
+# same PR keep that description as-is), then runs an automated code review of the PR's whole diff
+# via a separate headless `claude -p` call (no tool access) and posts it as a PR comment. Never
+# creates its own commit or its own throwaway branch — this hook only reacts to a commit already
+# made by the calling git-commit command.
 # No-ops if there's nothing new to ship, if the current
 # branch is the base branch itself, if the working tree has uncommitted changes, or if GITHUB_PAT
 # is unavailable.

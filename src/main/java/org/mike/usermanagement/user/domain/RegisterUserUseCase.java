@@ -1,5 +1,6 @@
 package org.mike.usermanagement.user.domain;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -76,8 +77,11 @@ public class RegisterUserUseCase {
         if (password.length() < MIN_PASSWORD_LENGTH) {
             throw new InvalidRegistrationException("Password must be at least 8 characters");
         }
-        if (password.length() > MAX_PASSWORD_LENGTH) {
-            throw new InvalidRegistrationException("Password must be at most 72 characters");
+        // BCrypt's 72-byte limit is a UTF-8 byte count, not a character count: a multi-byte
+        // character (emoji, non-Latin scripts) can pass a naive length() check while still
+        // exceeding 72 bytes once encoded, so length must be measured in encoded bytes.
+        if (password.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_LENGTH) {
+            throw new InvalidRegistrationException("Password must be at most 72 bytes");
         }
         boolean hasLetter = password.chars().anyMatch(Character::isLetter);
         boolean hasDigit = password.chars().anyMatch(Character::isDigit);
