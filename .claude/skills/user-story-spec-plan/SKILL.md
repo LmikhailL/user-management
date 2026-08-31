@@ -15,7 +15,12 @@ description: >
   classes, and reading/writing the spec, validation, and plan files — rather than shell search
   commands. Do not use this for generating the spec itself (that's "user-story-spec") or for
   validating spec consistency (that's "user-story-spec-validate") — this skill only plans the
-  build once a spec already exists and checks out.
+  build once a spec already exists and checks out. This skill never starts implementation
+  itself and never tells another skill to: after writing plan.md it stops and waits for the
+  user's explicit go-ahead in this same conversation before any implementation skill
+  (user-story-business-logic, user-story-liquibase, user-story-rest-api, the test-writing
+  skills) runs against this plan — a plan is a proposal for the user to approve, edit, or
+  reject, not an automatic trigger to start building.
 ---
 
 # User Story Spec Plan
@@ -165,7 +170,21 @@ that's ambiguous for this case. Omit this section if there's genuinely nothing.>
 
 After writing the file, tell the user the build sequence in one or two sentences and name the
 single biggest risk or blocker if Step 3/5 found one — don't make them open the plan to learn
-the story can't actually start until some prerequisite lands. Then point them at
-`user-story-business-logic` as the next step — it's the first implementation skill in the
-chain, and both `user-story-rest-api` and the test-writing skills depend on the components it
-produces existing first.
+the story can't actually start until some prerequisite lands.
+
+## Step 7 — Stop and wait for approval
+
+Do not invoke `user-story-business-logic`, or any other implementation or test-writing skill,
+in this same turn — not even to "get started while they review." Ask plainly whether the plan
+looks right to build from, and then stop.
+
+- If the user asks for changes (a different component split, a reordered build sequence, a
+  component they think is missing or unnecessary), revise `plan.md` and present the updated
+  build sequence again for approval — don't start implementing against a version they haven't
+  signed off on.
+- If the user says no / not yet, stop here. Nothing beyond `plan.md` has been touched.
+- Only an explicit affirmative in this conversation (e.g. "yes", "proceed", "looks good", "go
+  ahead", "build it") counts as approval to move on to `user-story-business-logic` — the first
+  implementation skill in the chain, since both `user-story-rest-api` and the test-writing
+  skills depend on the components it produces existing first. Silence, a topic change, or the
+  user asking an unrelated question is not approval.
