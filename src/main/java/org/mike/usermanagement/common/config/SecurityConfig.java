@@ -33,8 +33,11 @@ public class SecurityConfig {
                         .authenticated())
                 // Registration is a JSON API call, not a browser form submission, and the
                 // session it creates is a *result* of the call rather than something used to
-                // authenticate the call itself — so CSRF protection doesn't apply here.
-                .csrf(csrf -> csrf.ignoringRequestMatchers(matcher.matcher(REGISTER_USER_PATH)));
+                // authenticate the call itself — so CSRF protection doesn't apply here. Scoped to
+                // POST for the same reason as the authorization matcher above: an unscoped
+                // matcher would exempt every verb on this path from CSRF protection, which is the
+                // more security-sensitive of the two to leave broad.
+                .csrf(csrf -> csrf.ignoringRequestMatchers(matcher.matcher(HttpMethod.POST, REGISTER_USER_PATH)));
 
         return http.build();
     }

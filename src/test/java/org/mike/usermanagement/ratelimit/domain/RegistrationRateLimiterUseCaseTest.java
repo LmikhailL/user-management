@@ -85,16 +85,17 @@ class RegistrationRateLimiterUseCaseTest {
 
         @Test
         @DisplayName(
-                "given the writer loses the insert race twice in a row, when checked, then the second failure propagates rather than retrying indefinitely")
-        void propagatesIfRetryAlsoFails() {
+                "given the writer loses the insert race twice in a row, when checked, then it fails with the rate-limit message rather than an unmapped exception")
+        void treatsRepeatedRaceLossAsRateLimited() {
             // Given
-            DataIntegrityViolationException secondFailure = new DataIntegrityViolationException("duplicate key");
             when(registrationAttemptWriter.recordAttempt(eq(IP), any(Instant.class), any(Duration.class)))
                     .thenThrow(new DataIntegrityViolationException("duplicate key"))
-                    .thenThrow(secondFailure);
+                    .thenThrow(new DataIntegrityViolationException("duplicate key"));
 
             // When / Then
-            assertThatThrownBy(() -> useCase.checkAndRecordAttempt(IP)).isSameAs(secondFailure);
+            assertThatThrownBy(() -> useCase.checkAndRecordAttempt(IP))
+                    .isInstanceOf(TooManyRegistrationAttemptsException.class)
+                    .hasMessage("Too many attempts, please try again later");
             verify(registrationAttemptWriter, times(2)).recordAttempt(eq(IP), any(Instant.class), any(Duration.class));
         }
     }

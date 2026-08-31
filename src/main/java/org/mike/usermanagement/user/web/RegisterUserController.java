@@ -3,6 +3,7 @@ package org.mike.usermanagement.user.web;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.mike.usermanagement.user.domain.RegisterUserFacade;
 import org.mike.usermanagement.user.domain.RegisteredUser;
 import org.mike.usermanagement.web.generated.api.RegisterUserApi;
@@ -17,20 +18,12 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class RegisterUserController implements RegisterUserApi {
 
     private final RegisterUserFacade registerUserFacade;
     private final RegisterUserWebMapper mapper;
     private final HttpServletRequest httpServletRequest;
-
-    public RegisterUserController(
-            RegisterUserFacade registerUserFacade,
-            RegisterUserWebMapper mapper,
-            HttpServletRequest httpServletRequest) {
-        this.registerUserFacade = registerUserFacade;
-        this.mapper = mapper;
-        this.httpServletRequest = httpServletRequest;
-    }
 
     @Override
     public ResponseEntity<RegisteredUserResponse> registerUser(RegisterUserRequest registerUserRequest) {

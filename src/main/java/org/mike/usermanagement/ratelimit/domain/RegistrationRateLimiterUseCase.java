@@ -34,8 +34,16 @@ public class RegistrationRateLimiterUseCase {
             // must run in a brand new transaction rather than reusing this one — which is exactly
             // what a second call to the REQUIRES_NEW writer method gives us. The row now exists,
             // so this call finds and locks it like any other update, same as the analogous
-            // email-uniqueness race in RegisterUserUseCase.
-            attemptCount = registrationAttemptWriter.recordAttempt(ipAddress, now, WINDOW);
+            // email-uniqueness race in RegisterUserUseCase. In the vanishingly rare case that this
+            // retry *also* loses an insert race (a third concurrent first-time request), let it
+            // surface as rate-limited rather than an unmapped 500 — indistinguishable in practice
+            // from genuinely heavy concurrent traffic from this IP, and RestExceptionHandler
+            // already maps this exception to a 429 the client can sensibly retry.
+            try {
+                attemptCount = registrationAttemptWriter.recordAttempt(ipAddress, now, WINDOW);
+            } catch (DataIntegrityViolationException stillRacing) {
+                throw new TooManyRegistrationAttemptsException();
+            }
         }
 
         if (attemptCount > MAX_ATTEMPTS_PER_WINDOW) {
