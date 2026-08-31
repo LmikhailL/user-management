@@ -7,9 +7,10 @@
 # via a separate headless `claude -p` call (no tool access) and posts it as a PR comment. Never
 # creates its own commit or its own throwaway branch — this hook only reacts to a commit already
 # made by the calling git-commit command.
-# No-ops if there's nothing new to ship, if the current
-# branch is the base branch itself, if the working tree has uncommitted changes, or if GITHUB_PAT
-# is unavailable.
+# No-ops if there's nothing new to ship, if HEAD hasn't moved since the last fully-successful run
+# on this machine (see STATE_FILE below — avoids re-reviewing and re-commenting on an unchanged
+# commit), if the current branch is the base branch itself, if the working tree has uncommitted
+# changes, or if GITHUB_PAT is unavailable.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -42,6 +43,20 @@ CURRENT_BRANCH="$(git branch --show-current)"
 if [ -z "$CURRENT_BRANCH" ] || [ "$CURRENT_BRANCH" = "$BASE_BRANCH" ]; then
   # Detached HEAD, or still on the base branch — story-commit always branches to <TICKET-ID>
   # before committing, so there's nothing of ours to ship from here.
+  exit 0
+fi
+
+# This hook fires on every `git commit` on this branch, but nothing guarantees each firing is for
+# a HEAD nobody's reviewed yet — a retried or duplicated hook invocation, or a later run after a
+# no-op commit, can trigger with HEAD unchanged since the last full run. Without this check, each
+# such retrigger re-reviews the same origin/main...HEAD diff and posts a duplicate comment even
+# though nothing changed. Gitignored and per-branch (not committed state) since it only needs to
+# suppress redundant runs on this machine, not be shared.
+CURRENT_SHA="$(git rev-parse HEAD)"
+STATE_DIR="$REPO_ROOT/.claude/hooks/.state"
+STATE_FILE="${STATE_DIR}/${CURRENT_BRANCH}.last-run-sha"
+if [ -f "$STATE_FILE" ] && [ "$(cat "$STATE_FILE")" = "$CURRENT_SHA" ]; then
+  echo "stop-build-and-pr: HEAD unchanged since the last run for ${CURRENT_BRANCH}, skipping." >&2
   exit 0
 fi
 
@@ -168,3 +183,9 @@ EOF
     echo "stop-build-and-pr: code review produced no output, skipping comment." >&2
   fi
 fi
+
+# Record this SHA as fully processed only now that build, push, and review have all succeeded —
+# an early failure anywhere above (spotless, build, push) must NOT mark it done, so the next
+# invocation retries the whole thing instead of silently skipping a commit that never shipped.
+mkdir -p "$STATE_DIR"
+echo "$CURRENT_SHA" > "$STATE_FILE"
