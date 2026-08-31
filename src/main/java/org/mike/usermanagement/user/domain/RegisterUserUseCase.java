@@ -47,7 +47,11 @@ public class RegisterUserUseCase {
         user.setCreatedAt(Instant.now());
 
         try {
-            user = userRepository.save(user);
+            // saveAndFlush, not save: this entity's id is a client-generated UUID, so a plain
+            // save() doesn't need to flush immediately and Hibernate would otherwise queue the
+            // INSERT until the enclosing transaction commits — past this try/catch entirely,
+            // letting the violation escape uncaught instead of becoming EmailAlreadyRegistered.
+            user = userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException e) {
             // The unique index is the final authority: two requests for the same email racing
             // past the existsByEmail check above both reach here, and only one insert wins.

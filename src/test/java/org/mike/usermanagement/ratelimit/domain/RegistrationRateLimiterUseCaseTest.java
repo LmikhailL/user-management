@@ -1,6 +1,5 @@
 package org.mike.usermanagement.ratelimit.domain;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -9,62 +8,39 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Optional;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.mike.usermanagement.ratelimit.persistence.RegistrationAttempt;
-import org.mike.usermanagement.ratelimit.persistence.RegistrationAttemptRepository;
-import org.mockito.ArgumentCaptor;
 import org.springframework.dao.DataIntegrityViolationException;
 
 class RegistrationRateLimiterUseCaseTest {
 
     private static final String IP = "203.0.113.7";
 
-    private RegistrationAttemptRepository repository;
+    private RegistrationAttemptWriter registrationAttemptWriter;
     private RegistrationRateLimiterUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        repository = mock(RegistrationAttemptRepository.class);
-        useCase = new RegistrationRateLimiterUseCase(repository);
-        when(repository.save(any(RegistrationAttempt.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        registrationAttemptWriter = mock(RegistrationAttemptWriter.class);
+        useCase = new RegistrationRateLimiterUseCase(registrationAttemptWriter);
     }
 
     @Nested
     class WithinLimit {
 
         @Test
-        @DisplayName(
-                "given no prior attempts from this IP, when the first attempt is made, then it is recorded and allowed")
-        void allowsFirstAttempt() {
+        @DisplayName("given the writer records a count within the limit, when checked, then the attempt is allowed")
+        void allowsAttemptWithinLimit() {
             // Given
-            when(repository.findByIpAddress(IP)).thenReturn(Optional.empty());
+            when(registrationAttemptWriter.recordAttempt(eq(IP), any(Instant.class), any(Duration.class)))
+                    .thenReturn(5);
 
-            // When / Then
+            // When / Then: no exception
             useCase.checkAndRecordAttempt(IP);
-
-            ArgumentCaptor<RegistrationAttempt> captor = ArgumentCaptor.forClass(RegistrationAttempt.class);
-            verify(repository).save(captor.capture());
-            assertThat(captor.getValue().getAttemptCount()).isEqualTo(1);
-        }
-
-        @Test
-        @DisplayName("given 4 prior attempts in the current window, when the 5th attempt is made, then it is allowed")
-        void allowsFifthAttempt() {
-            // Given
-            RegistrationAttempt existing = new RegistrationAttempt(UUID.randomUUID(), IP, Instant.now(), 4);
-            when(repository.findByIpAddress(IP)).thenReturn(Optional.of(existing));
-
-            // When / Then
-            useCase.checkAndRecordAttempt(IP);
-
-            assertThat(existing.getAttemptCount()).isEqualTo(5);
         }
     }
 
@@ -73,36 +49,16 @@ class RegistrationRateLimiterUseCaseTest {
 
         @Test
         @DisplayName(
-                "given 5 attempts already made in the last minute, when a 6th attempt is made, then it fails with the rate-limit message")
-        void rejectsSixthAttempt() {
+                "given the writer records a count over the limit, when checked, then it fails with the rate-limit message")
+        void rejectsAttemptOverLimit() {
             // Given
-            RegistrationAttempt existing = new RegistrationAttempt(UUID.randomUUID(), IP, Instant.now(), 5);
-            when(repository.findByIpAddress(IP)).thenReturn(Optional.of(existing));
+            when(registrationAttemptWriter.recordAttempt(eq(IP), any(Instant.class), any(Duration.class)))
+                    .thenReturn(6);
 
             // When / Then
             assertThatThrownBy(() -> useCase.checkAndRecordAttempt(IP))
                     .isInstanceOf(TooManyRegistrationAttemptsException.class)
                     .hasMessage("Too many attempts, please try again later");
-        }
-
-        @Test
-        @DisplayName(
-                "given the 6th attempt is rejected, when it is recorded, then the count is still persisted so further attempts stay blocked")
-        void stillPersistsCountOnRejection() {
-            // Given
-            RegistrationAttempt existing = new RegistrationAttempt(UUID.randomUUID(), IP, Instant.now(), 5);
-            when(repository.findByIpAddress(IP)).thenReturn(Optional.of(existing));
-
-            // When
-            try {
-                useCase.checkAndRecordAttempt(IP);
-            } catch (TooManyRegistrationAttemptsException ignored) {
-                // expected
-            }
-
-            // Then
-            verify(repository).save(eq(existing));
-            assertThat(existing.getAttemptCount()).isEqualTo(6);
         }
     }
 
@@ -111,42 +67,35 @@ class RegistrationRateLimiterUseCaseTest {
 
         @Test
         @DisplayName(
-                "given two first-time requests from the same IP race on insert, when the loser hits the unique constraint, then it retries against the winner's row instead of failing")
-        void retriesAfterLosingInsertRace() {
-            // Given
-            RegistrationAttempt winnerRow = new RegistrationAttempt(UUID.randomUUID(), IP, Instant.now(), 1);
-            when(repository.findByIpAddress(IP)).thenReturn(Optional.empty(), Optional.of(winnerRow));
-            when(repository.save(any(RegistrationAttempt.class)))
+                "given the writer loses the insert race for the first attempt from this IP, when checked, then it retries once against the winner's row instead of failing")
+        void retriesOnceAfterLosingInsertRace() {
+            // Given: the writer's own REQUIRES_NEW transaction was already rolled back by the
+            // failed insert, so recovering means calling the writer again in a fresh transaction
+            // - not reusing any state from the failed call.
+            when(registrationAttemptWriter.recordAttempt(eq(IP), any(Instant.class), any(Duration.class)))
                     .thenThrow(new DataIntegrityViolationException("duplicate key"))
-                    .thenAnswer(invocation -> invocation.getArgument(0));
+                    .thenReturn(2);
 
             // When
             useCase.checkAndRecordAttempt(IP);
 
             // Then
-            verify(repository, times(2)).findByIpAddress(IP);
-            verify(repository, times(2)).save(any(RegistrationAttempt.class));
-            assertThat(winnerRow.getAttemptCount()).isEqualTo(2);
+            verify(registrationAttemptWriter, times(2)).recordAttempt(eq(IP), any(Instant.class), any(Duration.class));
         }
-    }
-
-    @Nested
-    class WindowExpiry {
 
         @Test
         @DisplayName(
-                "given the last window started more than a minute ago, when a new attempt is made, then the count resets instead of accumulating")
-        void resetsAfterWindowExpires() {
+                "given the writer loses the insert race twice in a row, when checked, then the second failure propagates rather than retrying indefinitely")
+        void propagatesIfRetryAlsoFails() {
             // Given
-            Instant staleWindowStart = Instant.now().minus(90, ChronoUnit.SECONDS);
-            RegistrationAttempt existing = new RegistrationAttempt(UUID.randomUUID(), IP, staleWindowStart, 5);
-            when(repository.findByIpAddress(IP)).thenReturn(Optional.of(existing));
+            DataIntegrityViolationException secondFailure = new DataIntegrityViolationException("duplicate key");
+            when(registrationAttemptWriter.recordAttempt(eq(IP), any(Instant.class), any(Duration.class)))
+                    .thenThrow(new DataIntegrityViolationException("duplicate key"))
+                    .thenThrow(secondFailure);
 
             // When / Then
-            useCase.checkAndRecordAttempt(IP);
-
-            assertThat(existing.getAttemptCount()).isEqualTo(1);
-            assertThat(existing.getWindowStart()).isAfter(staleWindowStart);
+            assertThatThrownBy(() -> useCase.checkAndRecordAttempt(IP)).isSameAs(secondFailure);
+            verify(registrationAttemptWriter, times(2)).recordAttempt(eq(IP), any(Instant.class), any(Duration.class));
         }
     }
 }

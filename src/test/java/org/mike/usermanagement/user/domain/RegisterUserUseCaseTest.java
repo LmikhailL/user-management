@@ -45,7 +45,7 @@ class RegisterUserUseCaseTest {
         passwordEncoder = new BCryptPasswordEncoder(12);
         useCase = new RegisterUserUseCase(userRepository, passwordEncoder);
 
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> {
             User user = invocation.getArgument(0);
             user.setId(UUID.randomUUID());
             return user;
@@ -77,7 +77,7 @@ class RegisterUserUseCaseTest {
 
             // Then
             ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-            verify(userRepository).save(captor.capture());
+            verify(userRepository).saveAndFlush(captor.capture());
             User saved = captor.getValue();
             assertThat(saved.getEmail()).isEqualTo("ada@example.com");
             assertThat(saved.getStatus()).isEqualTo(UserStatus.ACTIVE);
@@ -103,7 +103,7 @@ class RegisterUserUseCaseTest {
 
             // Then
             ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-            verify(userRepository).save(captor.capture());
+            verify(userRepository).saveAndFlush(captor.capture());
             String storedHash = captor.getValue().getPasswordHash();
             assertThat(storedHash).isNotEqualTo(VALID_PASSWORD);
             assertThat(storedHash).startsWith("$2");
@@ -164,7 +164,7 @@ class RegisterUserUseCaseTest {
             assertThatThrownBy(() -> useCase.register(command))
                     .isInstanceOf(EmailAlreadyRegisteredException.class)
                     .hasMessage("That email is already registered");
-            verify(userRepository, never()).save(any());
+            verify(userRepository, never()).saveAndFlush(any());
         }
 
         @Test
@@ -173,7 +173,8 @@ class RegisterUserUseCaseTest {
         void rejectsRaceOnUniqueIndex() {
             // Given
             when(userRepository.existsByEmail("ada@example.com")).thenReturn(false);
-            when(userRepository.save(any(User.class))).thenThrow(new DataIntegrityViolationException("duplicate key"));
+            when(userRepository.saveAndFlush(any(User.class)))
+                    .thenThrow(new DataIntegrityViolationException("duplicate key"));
             RegisterUserCommand command = new RegisterUserCommand("ada@example.com", VALID_PASSWORD, VALID_PASSWORD);
 
             // When / Then

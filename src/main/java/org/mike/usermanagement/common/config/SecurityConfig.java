@@ -2,6 +2,7 @@ package org.mike.usermanagement.common.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
@@ -19,7 +20,14 @@ public class SecurityConfig {
         PathPatternRequestMatcher.Builder matcher = PathPatternRequestMatcher.withDefaults();
 
         http.authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(matcher.matcher(REGISTER_USER_PATH), matcher.matcher(ACTUATOR_HEALTH_PATH))
+                        // Method-scoped matchers: an unscoped matcher.matcher(path) permits every
+                        // HTTP verb on that path, not just the one this endpoint actually exposes.
+                        // That's harmless today since nothing else is mapped to /api/users, but it
+                        // would silently become a public hole the moment a GET/PUT/DELETE is added
+                        // there without anyone revisiting this config.
+                        .requestMatchers(
+                                matcher.matcher(HttpMethod.POST, REGISTER_USER_PATH),
+                                matcher.matcher(HttpMethod.GET, ACTUATOR_HEALTH_PATH))
                         .permitAll()
                         .anyRequest()
                         .authenticated())
