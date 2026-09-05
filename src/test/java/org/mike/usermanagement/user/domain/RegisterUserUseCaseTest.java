@@ -66,8 +66,8 @@ class RegisterUserUseCaseTest {
 
         @Test
         @DisplayName(
-                "given no user exists with the email, when registering with valid input, then an active user is created and returned")
-        void registersActiveUser() {
+                "given no user exists with the email, when registering with valid input, then a pending_verification user is created and returned")
+        void registersPendingVerificationUser() {
             // Given
             when(userRepository.existsByEmail("ada@example.com")).thenReturn(false);
             RegisterUserCommand command = new RegisterUserCommand("ada@example.com", VALID_PASSWORD, VALID_PASSWORD);
@@ -80,7 +80,7 @@ class RegisterUserUseCaseTest {
             verify(userRepository).saveAndFlush(captor.capture());
             User saved = captor.getValue();
             assertThat(saved.getEmail()).isEqualTo("ada@example.com");
-            assertThat(saved.getStatus()).isEqualTo(UserStatus.ACTIVE);
+            assertThat(saved.getStatus()).isEqualTo(UserStatus.PENDING_VERIFICATION);
             assertThat(saved.getCreatedAt()).isNotNull();
             assertThat(result.email()).isEqualTo("ada@example.com");
             assertThat(result.id()).isEqualTo(saved.getId());

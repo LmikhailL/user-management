@@ -13,6 +13,7 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
 public class SecurityConfig {
 
     private static final String REGISTER_USER_PATH = "/api/users";
+    private static final String VERIFY_EMAIL_PATH = "/api/users/verify";
     private static final String ACTUATOR_HEALTH_PATH = "/actuator/health";
 
     @Bean
@@ -27,6 +28,7 @@ public class SecurityConfig {
                         // there without anyone revisiting this config.
                         .requestMatchers(
                                 matcher.matcher(HttpMethod.POST, REGISTER_USER_PATH),
+                                matcher.matcher(HttpMethod.GET, VERIFY_EMAIL_PATH),
                                 matcher.matcher(HttpMethod.GET, ACTUATOR_HEALTH_PATH))
                         .permitAll()
                         .anyRequest()

@@ -43,7 +43,7 @@ public class RegisterUserUseCase {
         User user = new User();
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(command.password()));
-        user.setStatus(UserStatus.ACTIVE);
+        user.setStatus(UserStatus.PENDING_VERIFICATION);
         user.setCreatedAt(Instant.now());
 
         try {

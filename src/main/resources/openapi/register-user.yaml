@@ -60,12 +60,19 @@ components:
       required:
         - id
         - email
+        - verificationToken
       properties:
         id:
           type: string
           format: uuid
         email:
           type: string
+        verificationToken:
+          type: string
+          description: >
+            Temporary stand-in for real email delivery (no mailer is wired up yet — see US-002):
+            the raw, single-use email verification token/link. Never logged; returned here only
+            so the caller can complete verification. Revisit once a real mailer exists.
     ErrorResponse:
       type: object
       required:

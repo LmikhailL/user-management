@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mike.usermanagement.ratelimit.domain.RegistrationRateLimiterUseCase;
 import org.mike.usermanagement.ratelimit.domain.TooManyRegistrationAttemptsException;
+import org.mike.usermanagement.verification.domain.IssueVerificationTokenUseCase;
 
 class RegisterUserFacadeTest {
 
@@ -19,23 +20,26 @@ class RegisterUserFacadeTest {
     private final RegistrationRateLimiterUseCase registrationRateLimiterUseCase =
             mock(RegistrationRateLimiterUseCase.class);
     private final RegisterUserUseCase registerUserUseCase = mock(RegisterUserUseCase.class);
+    private final IssueVerificationTokenUseCase issueVerificationTokenUseCase =
+            mock(IssueVerificationTokenUseCase.class);
     private final RegisterUserFacade facade =
-            new RegisterUserFacade(registrationRateLimiterUseCase, registerUserUseCase);
+            new RegisterUserFacade(registrationRateLimiterUseCase, registerUserUseCase, issueVerificationTokenUseCase);
 
     @Test
     @DisplayName(
-            "given the rate limit is not exceeded, when registering, then the rate limiter is checked before the user is registered")
+            "given the rate limit is not exceeded, when registering, then the rate limiter is checked, the user is registered, and a verification token is issued for it")
     void registersWhenWithinLimit() {
         // Given
         RegisterUserCommand command = new RegisterUserCommand("ada@example.com", "Str0ngPass1!", "Str0ngPass1!");
-        RegisteredUser expected = new RegisteredUser(UUID.randomUUID(), "ada@example.com");
-        when(registerUserUseCase.register(command)).thenReturn(expected);
+        RegisteredUser expectedUser = new RegisteredUser(UUID.randomUUID(), "ada@example.com");
+        when(registerUserUseCase.register(command)).thenReturn(expectedUser);
+        when(issueVerificationTokenUseCase.issue(expectedUser.id())).thenReturn("raw-token");
 
         // When
-        RegisteredUser result = facade.register(command, IP);
+        RegistrationResult result = facade.register(command, IP);
 
         // Then
-        assertThat(result).isEqualTo(expected);
+        assertThat(result).isEqualTo(new RegistrationResult(expectedUser, "raw-token"));
     }
 
     @Test

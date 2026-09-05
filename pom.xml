@@ -255,6 +255,26 @@
                             <generateModelTests>false</generateModelTests>
                         </configuration>
                     </execution>
+                    <execution>
+                        <id>verify-email</id>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <inputSpec>${project.basedir}/src/main/resources/openapi/verify-email.yaml</inputSpec>
+                            <generatorName>spring</generatorName>
+                            <apiPackage>org.mike.usermanagement.web.generated.api</apiPackage>
+                            <modelPackage>org.mike.usermanagement.web.generated.model</modelPackage>
+                            <configOptions>
+                                <interfaceOnly>true</interfaceOnly>
+                                <useSpringBoot3>true</useSpringBoot3>
+                                <useJakartaEe>true</useJakartaEe>
+                                <useTags>true</useTags>
+                            </configOptions>
+                            <generateApiTests>false</generateApiTests>
+                            <generateModelTests>false</generateModelTests>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

@@ -1,0 +1,56 @@
+openapi: 3.0.3
+info:
+  title: Verify Email API
+  version: "1.0"
+paths:
+  /api/users/verify:
+    get:
+      operationId: verifyEmail
+      summary: Verify a new user's email via a one-time token link
+      tags:
+        - VerifyEmail
+      parameters:
+        - name: token
+          in: query
+          # Not required at the OpenAPI level: a missing/blank token must fail the same
+          # "Invalid or expired verification link" / 404 path as an unrecognized one (US-002
+          # Decision 4), not a framework-level 400 for a missing required parameter.
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Email verified, account activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyEmailResponse"
+        "404":
+          description: Token is missing, unrecognized, expired, or already used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    VerifyEmailResponse:
+      type: object
+      required:
+        - id
+        - email
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+        - message
+        - category
+      properties:
+        message:
+          type: string
+        category:
+          type: string

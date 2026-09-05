@@ -28,7 +28,7 @@ class RegisterUserIT extends AbstractIntegrationTest {
 
     @Test
     @DisplayName(
-            "given no user exists with the email, when POSTing valid registration details, then the account is created, a session cookie is set, and the response is 201")
+            "given no user exists with the email, when POSTing valid registration details, then a pending_verification account is created, a verification token is returned, and no session cookie is set")
     void registersNewUser() throws Exception {
         // Given
         String email = "ada.%s@example.com".formatted(UUID.randomUUID());
@@ -49,14 +49,13 @@ class RegisterUserIT extends AbstractIntegrationTest {
         RegisteredUserResponse body = objectMapper.readValue(response.body(), RegisteredUserResponse.class);
         assertThat(body.getEmail()).isEqualTo(email);
         assertThat(body.getId()).isNotNull();
+        assertThat(body.getVerificationToken()).isNotBlank();
 
-        assertThat(response.headers().allValues("Set-Cookie"))
-                .anySatisfy(cookie ->
-                        assertThat(cookie).containsIgnoringCase("HttpOnly").containsIgnoringCase("SameSite=Lax"));
+        assertThat(response.headers().allValues("Set-Cookie")).isEmpty();
 
         Optional<User> saved = userRepository.findByEmail(email);
         assertThat(saved).isPresent();
-        assertThat(saved.get().getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(saved.get().getStatus()).isEqualTo(UserStatus.PENDING_VERIFICATION);
         assertThat(passwordEncoder.matches(password, saved.get().getPasswordHash()))
                 .isTrue();
     }
